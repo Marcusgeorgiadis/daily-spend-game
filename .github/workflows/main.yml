@@ -1,31 +1,10 @@
-name: Build Debug APK
-
-on:
-  workflow_dispatch: {}
-  push:
-    branches: [ "main" ]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Unzip the Android project that lives in the repo as a single ZIP
-      - name: Unzip project
-        run: unzip -o DailySpendGame_Revamped_v2.zip -d .
-
-      # ---- Kotlin 2.0 + Compose fix ----
-      # We overwrite app/build.gradle.kts inside the runner so it applies the new
-      # Compose plugin and removes the old composeOptions block.
       - name: Patch Gradle for Kotlin 2.0 Compose
         run: |
           cat > app/build.gradle.kts <<'EOF'
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
-              id("org.jetbrains.kotlin.plugin.compose")      // <-- required for Kotlin 2.0
+              id("org.jetbrains.kotlin.plugin.compose") version "2.0.0"   // <-- add version
               id("org.jetbrains.kotlin.plugin.serialization")
           }
 
@@ -51,20 +30,13 @@ jobs:
                           "proguard-rules.pro"
                       )
                   }
-                  debug {
-                      isMinifyEnabled = false
-                  }
+                  debug { isMinifyEnabled = false }
               }
 
-              buildFeatures {
-                  compose = true
-                  buildConfig = true
-              }
+              buildFeatures { compose = true; buildConfig = true }
 
-              // NOTE: No composeOptions here when using Kotlin 2.0 + compose plugin
-              packaging {
-                  resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
-              }
+              // No composeOptions block when using Kotlin 2.0 + compose plugin
+              packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
               kotlinOptions { jvmTarget = "17" }
           }
 
@@ -90,34 +62,3 @@ jobs:
               androidTestImplementation("androidx.compose.ui:ui-test-junit4")
           }
           EOF
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
-        run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-
-      # Project zip doesn't include a Gradle wrapper; use a runner Gradle
-      - name: Download Gradle 8.7
-        run: |
-          curl -sL -o gradle.zip https://services.gradle.org/distributions/gradle-8.7-bin.zip
-          unzip -q gradle.zip
-          echo "$PWD/gradle-8.7/bin" >> $GITHUB_PATH
-
-      - name: Build debug APK
-        run: gradle assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: DailySpendGame-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
